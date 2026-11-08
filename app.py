@@ -19,7 +19,7 @@ MAX_SPREAD = 0.50
 MAX_LOTS = 0.01
 MAX_CHASE = 0.5
 MAX_DATA_AGE_MIN = 25
-MODEL = 'claude-sonnet-4-5'
+MODEL = 'gemini-2.5-flash'
 LOG_FILE = 'liss_signals.csv'
 
 with st.expander('Daily check (tap to open)', expanded=True):
@@ -53,7 +53,6 @@ def load_news():
 
 
 def high_impact_warning(now_utc):
-    # Rule-based warning for common big events. Check an economic calendar for exact dates.
     notes = []
     wd, day, hr = now_utc.weekday(), now_utc.day, now_utc.hour
     if wd == 4 and day <= 7:
@@ -163,17 +162,25 @@ SYSTEM = (
 
 
 def ask_ai(messages, context):
-    key = st.secrets.get('ANTHROPIC_API_KEY', None)
+    key = st.secrets.get('GEMINI_API_KEY', None)
     if not key:
-        return 'AI key is missing. Add ANTHROPIC_API_KEY in the app Secrets settings.'
+        return 'AI key is missing. Add GEMINI_API_KEY in your Streamlit Secrets settings.'
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=key)
-        resp = client.messages.create(
-            model=MODEL, max_tokens=400,
-            system=SYSTEM + '\n\nLIVE DATA:\n' + context,
-            messages=messages)
-        return resp.content[0].text
+        from google import genai
+        client = genai.Client(api_key=key)
+        
+        formatted_chat = []
+        for m in messages:
+            role = 'User' if m['role'] == 'user' else 'Coach'
+            formatted_chat.append(f"{role}: {m['content']}")
+        
+        full_prompt = f"SYSTEM INSTRUCTIONS:\n{SYSTEM}\n\nLIVE DATA CONTEXT:\n{context}\n\nCHAT HISTORY:\n" + "\n".join(formatted_chat)
+        
+        resp = client.models.generate_content(
+            model=MODEL,
+            contents=full_prompt
+        )
+        return resp.text
     except Exception as e:
         return 'The AI could not answer right now (%s). The rule-based signal above still works.' % type(e).__name__
 
